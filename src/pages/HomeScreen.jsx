@@ -4,6 +4,7 @@ import { mockAuth } from '../lib/mockAuth';
 import { InfoCard } from '../components/InfoCard';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { StreakBadge } from '../components/StreakBadge';
+import { Leaderboard } from '../components/Leaderboard';
 
 export const HomeScreen = () => {
   const navigate = useNavigate();
@@ -145,6 +146,14 @@ export const HomeScreen = () => {
           </div>
           <span className="text-2xl text-white">›</span>
         </button>
+
+        {/* Leaderboard */}
+        {!loading && (
+          <Leaderboard 
+            currentUserPoints={totalActions ?? 0} 
+            currentUserRank={Math.floor(Math.random() * 500) + 1}
+          />
+        )}
       </div>
     </div>
   );
