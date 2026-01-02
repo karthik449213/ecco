@@ -10,6 +10,7 @@ export const CameraScreen = () => {
   const [hasPermission, setHasPermission] = useState(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [stream, setStream] = useState(null);
+  const [isCameraReady, setIsCameraReady] = useState(false);
   const { location, isLocating, permission, error, startLocating, stopLocating, lockLocation, isLocked } = useRealTimeLocation();
 
   useEffect(() => {
@@ -34,57 +35,98 @@ export const CameraScreen = () => {
 
   useEffect(() => {
     const startCamera = async () => {
+      setIsCameraReady(false);
       try {
         console.log('[CameraScreen] Requesting camera access...');
         
-        // Try with environment camera first (mobile), then fallback to any camera
+        // Try multiple camera options with priority
         let mediaStream;
-        try {
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-            audio: false,
-          });
-        } catch (envError) {
-          console.log('[CameraScreen] Environment camera failed, trying any camera...');
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-            audio: false,
-          });
+        const cameraOptions = [
+          // Try back camera (environment) first
+          { video: { facingMode: { exact: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+          // Try any back camera
+          { video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+          // Try front camera (user)
+          { video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+          // Try any available camera
+          { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+          // Last resort - basic video
+          { video: true, audio: false }
+        ];
+
+        for (let i = 0; i < cameraOptions.length; i++) {
+          try {
+            console.log(`[CameraScreen] Trying camera option ${i + 1}...`);
+            mediaStream = await navigator.mediaDevices.getUserMedia(cameraOptions[i]);
+            console.log(`[CameraScreen] Camera option ${i + 1} successful`);
+            break;
+          } catch (err) {
+            console.log(`[CameraScreen] Camera option ${i + 1} failed:`, err.message);
+            if (i === cameraOptions.length - 1) throw err;
+          }
         }
         
-        console.log('[CameraScreen] Camera access granted');
+        if (!mediaStream) {
+          throw new Error('No camera available');
+        }
+
+        console.log('[CameraScreen] Camera access granted, tracks:', mediaStream.getTracks().length);
         setStream(mediaStream);
         
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
-          // Ensure video element is ready with proper event handling
+          
+          // Wait for video to be ready
           await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error('Video load timeout')), 10000);
+            const timeout = setTimeout(() => {
+              reject(new Error('Video load timeout'));
+            }, 15000);
             
-            videoRef.current.onloadedmetadata = () => {
+            const onLoadedMetadata = () => {
               console.log('[CameraScreen] Video metadata loaded:', {
                 width: videoRef.current.videoWidth,
-                height: videoRef.current.videoHeight
+                height: videoRef.current.videoHeight,
+                readyState: videoRef.current.readyState
               });
-              clearTimeout(timeout);
-              resolve();
+              
+              // Try to play
+              videoRef.current.play()
+                .then(() => {
+                  console.log('[CameraScreen] Video playing successfully');
+                  clearTimeout(timeout);
+                  setIsCameraReady(true);
+                  resolve();
+                })
+                .catch(playErr => {
+                  console.error('[CameraScreen] Play failed:', playErr);
+                  // Try user interaction workaround
+                  clearTimeout(timeout);
+                  setIsCameraReady(true);
+                  resolve();
+                });
             };
             
+            videoRef.current.onloadedmetadata = onLoadedMetadata;
             videoRef.current.onerror = (err) => {
+              console.error('[CameraScreen] Video error:', err);
               clearTimeout(timeout);
               reject(err);
             };
+
+            // If metadata already loaded
+            if (videoRef.current.readyState >= 2) {
+              onLoadedMetadata();
+            }
           });
-          
-          await videoRef.current.play();
-          console.log('[CameraScreen] Video playing successfully');
         }
+        
         setHasPermission(true);
       } catch (err) {
         console.error('[CameraScreen] Camera error:', err);
         console.error('[CameraScreen] Error name:', err.name);
         console.error('[CameraScreen] Error message:', err.message);
         setHasPermission(false);
+        setIsCameraReady(false);
       }
     };
 
@@ -101,77 +143,58 @@ export const CameraScreen = () => {
   }, []);
 
   const handleCapture = async () => {
-    if (!videoRef.current || isCapturing) return;
+    if (!videoRef.current || isCapturing || !isCameraReady) {
+      if (!isCameraReady) {
+        alert('Camera is still loading. Please wait a moment.');
+      }
+      return;
+    }
     
     try {
       setIsCapturing(true);
-      console.log('[CameraScreen] Capturing photo...');
+      console.log('[CameraScreen] Starting capture...');
 
-      // Check video readiness
-      const videoWidth = videoRef.current.videoWidth;
-      const videoHeight = videoRef.current.videoHeight;
-      const readyState = videoRef.current.readyState;
+      const video = videoRef.current;
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
       
-      console.log('[CameraScreen] Video state:', {
-        videoWidth,
-        videoHeight,
-        readyState,
-        paused: videoRef.current.paused
-      });
+      console.log('[CameraScreen] Video dimensions:', { videoWidth, videoHeight, readyState: video.readyState });
 
-      // Wait for video to be ready if needed
-      if (readyState < 2 || videoWidth === 0 || videoHeight === 0) {
-        console.log('[CameraScreen] Video not ready, waiting...');
-        
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error('Video ready timeout'));
-          }, 5000);
-
-          const checkReady = () => {
-            if (videoRef.current.readyState >= 2 && 
-                videoRef.current.videoWidth > 0 && 
-                videoRef.current.videoHeight > 0) {
-              clearTimeout(timeout);
-              console.log('[CameraScreen] Video now ready');
-              resolve();
-            } else {
-              setTimeout(checkReady, 100);
-            }
-          };
-          
-          checkReady();
-        });
+      if (videoWidth === 0 || videoHeight === 0) {
+        throw new Error('Video dimensions not available');
       }
 
       // Lock location when capturing
       const capturedLocation = lockLocation();
       console.log('[CameraScreen] Location locked:', capturedLocation);
 
+      // Create canvas and capture frame
       const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
+      canvas.width = videoWidth;
+      canvas.height = videoHeight;
       
-      if (canvas.width === 0 || canvas.height === 0) {
-        console.error('[CameraScreen] Video dimensions still not available');
-        setIsCapturing(false);
-        alert('Camera not ready. Please reload the page and try again.');
-        return;
-      }
-
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(videoRef.current, 0, 0);
+      if (!ctx) {
+        throw new Error('Failed to get canvas context');
+      }
+      
+      ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
+      console.log('[CameraScreen] Frame drawn to canvas');
 
+      // Convert to blob and navigate
       canvas.toBlob((blob) => {
         if (!blob) {
           console.error('[CameraScreen] Failed to create blob');
           setIsCapturing(false);
+          alert('Failed to process image. Please try again.');
           return;
         }
         
+        console.log('[CameraScreen] Blob created:', blob.size, 'bytes');
         const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
         const photoUrl = URL.createObjectURL(blob);
-        console.log('[CameraScreen] Photo captured successfully, navigating to preview');
+        
+        console.log('[CameraScreen] Navigating to preview with photo');
         navigate('/preview', { 
           state: { 
             photoUrl, 
@@ -179,11 +202,12 @@ export const CameraScreen = () => {
             location: capturedLocation 
           } 
         });
-      }, 'image/jpeg', 0.8);
+      }, 'image/jpeg', 0.9);
+      
     } catch (error) {
       console.error('[CameraScreen] Capture error:', error);
       setIsCapturing(false);
-      alert('Failed to capture photo. Please try again.');
+      alert(`Failed to capture photo: ${error.message}. Please try again.`);
     }
   };
 
@@ -221,10 +245,21 @@ export const CameraScreen = () => {
         playsInline
         muted
         className="w-full h-screen object-cover"
+        style={{ transform: 'scaleX(1)' }}
       />
 
+      {/* Camera Loading Overlay */}
+      {!isCameraReady && hasPermission && (
+        <div className="absolute inset-0 bg-black bg-opacity-80 flex items-center justify-center z-40">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+            <p className="text-white text-lg">Initializing camera...</p>
+          </div>
+        </div>
+      )}
+
       {/* Overlay Top */}
-      <div className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-50 px-6 py-3 rounded-2xl">
+      <div className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-50 px-6 py-3 rounded-2xl z-10">
         <p className="text-white font-bold text-center">
           Capture your eco action
         </p>
@@ -245,11 +280,11 @@ export const CameraScreen = () => {
       </div>
 
       {/* Capture Button */}
-      <div className="absolute bottom-12 left-1/2 transform -translate-x-1/2">
+      <div className="absolute bottom-12 left-1/2 transform -translate-x-1/2 z-20">
         <button
           onClick={handleCapture}
-          disabled={isCapturing}
-          className="w-20 h-20 bg-white bg-opacity-90 rounded-full border-4 border-accent-50 flex items-center justify-center hover:scale-105 transition-transform disabled:opacity-50"
+          disabled={isCapturing || !isCameraReady}
+          className="w-20 h-20 bg-white bg-opacity-90 rounded-full border-4 border-accent-50 flex items-center justify-center hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isCapturing ? (
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-700"></div>
@@ -257,6 +292,11 @@ export const CameraScreen = () => {
             <span className="text-3xl">📷</span>
           )}
         </button>
+        {!isCameraReady && (
+          <p className="text-white text-xs text-center mt-2 bg-black bg-opacity-50 px-3 py-1 rounded-full">
+            Loading camera...
+          </p>
+        )}
       </div>
     </div>
   );
