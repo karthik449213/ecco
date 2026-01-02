@@ -32,7 +32,7 @@ export const MapScreen = () => {
   // Initialize map
   useEffect(() => {
     let attempts = 0;
-    const maxAttempts = 20; // 10 seconds max wait
+    const maxAttempts = 20;
     
     const initializeMap = () => {
       if (!mapRef.current) {
@@ -58,9 +58,35 @@ export const MapScreen = () => {
           center: defaultCenter,
           zoomControl: true,
           streetViewControl: false,
-          fullscreenControl: false,
-          mapTypeControl: false,
+          fullscreenControl: true,
+          mapTypeControl: true,
           mapTypeId: 'roadmap',
+          gestureHandling: 'greedy', // Enable dragging/panning
+          scrollwheel: true,
+          clickableIcons: true,
+        });
+
+        // Add click listener for map
+        map.addListener('click', (e) => {
+          console.log('[MapScreen] Map clicked at:', e.latLng);
+        });
+
+        // Add idle listener for smooth animation completion
+        map.addListener('idle', () => {
+          console.log('[MapScreen] Map animation complete');
+        });
+
+        // Add drag listener
+        map.addListener('dragstart', () => {
+          console.log('[MapScreen] Map drag started');
+        });
+
+        map.addListener('drag', () => {
+          console.log('[MapScreen] Map dragging...');
+        });
+
+        map.addListener('dragend', () => {
+          console.log('[MapScreen] Map drag ended');
         });
 
         setGoogleMap(map);
@@ -76,8 +102,9 @@ export const MapScreen = () => {
   // Update map center when user location changes
   useEffect(() => {
     if (googleMap) {
-      googleMap.setCenter(userLocation);
-      console.log('[MapScreen] Map center updated:', userLocation);
+      // Smooth animation to new location (panTo instead of setCenter)
+      googleMap.panTo(userLocation);
+      console.log('[MapScreen] Animating map to user location:', userLocation);
     }
   }, [googleMap, userLocation]);
 
@@ -94,9 +121,10 @@ export const MapScreen = () => {
       position: userLocation,
       map: googleMap,
       title: 'Your Location',
+      animation: window.google.maps.Animation.DROP,
       icon: {
         path: window.google.maps.SymbolPath.CIRCLE,
-        scale: 8,
+        scale: 10,
         fillColor: '#3B82F6',
         fillOpacity: 0.8,
         strokeColor: '#1F2937',
@@ -105,41 +133,70 @@ export const MapScreen = () => {
     });
     markersRef.current.push(userMarker);
 
+    // Add pulsing animation using CSS/timing
+    const pulseInterval = setInterval(() => {
+      if (userMarker && userMarker.getVisible()) {
+        const currentIcon = userMarker.getIcon();
+        const newScale = currentIcon.scale === 10 ? 12 : 10;
+        userMarker.setIcon({
+          ...currentIcon,
+          scale: newScale,
+        });
+      }
+    }, 800);
+
     // Recycling location markers
-    filteredLocations.forEach(location => {
-      const marker = new window.google.maps.Marker({
-        position: { lat: location.lat, lng: location.lng },
-        map: googleMap,
-        title: location.name,
-        icon: {
-          path: 'M12 0C6.48 0 2 4.48 2 10c0 5.85 8 14 10 14s10-8.15 10-14c0-5.52-4.48-10-10-10zm0 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z',
-          scale: 2,
-          fillColor: '#10b981',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 2,
-          anchor: new window.google.maps.Point(12, 24),
-        },
-      });
+    filteredLocations.forEach((location, index) => {
+      // Add slight delay for cascade animation
+      setTimeout(() => {
+        const marker = new window.google.maps.Marker({
+          position: { lat: location.lat, lng: location.lng },
+          map: googleMap,
+          title: location.name,
+          animation: window.google.maps.Animation.DROP,
+          icon: {
+            path: 'M12 0C6.48 0 2 4.48 2 10c0 5.85 8 14 10 14s10-8.15 10-14c0-5.52-4.48-10-10-10zm0 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z',
+            scale: 2,
+            fillColor: '#10b981',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 2,
+            anchor: new window.google.maps.Point(12, 24),
+          },
+        });
 
-      const infoWindow = new window.google.maps.InfoWindow({
-        content: `
-          <div class="bg-white p-3 rounded">
-            <p class="font-bold text-primary-800">${location.name}</p>
-            <p class="text-sm text-gray-600">${location.type}</p>
-          </div>
-        `,
-      });
+        const infoWindow = new window.google.maps.InfoWindow({
+          content: `
+            <div class="bg-white p-3 rounded max-w-xs">
+              <p class="font-bold text-primary-800 text-sm">${location.name}</p>
+              <p class="text-xs text-gray-600">${location.type}</p>
+            </div>
+          `,
+        });
 
-      marker.addListener('click', () => {
-        // Close all other info windows
-        infoWindow.open(googleMap, marker);
-      });
+        marker.addListener('click', () => {
+          // Close all other info windows by opening new one
+          infoWindow.open(googleMap, marker);
+        });
 
-      markersRef.current.push(marker);
+        marker.addListener('mouseover', () => {
+          marker.setAnimation(window.google.maps.Animation.BOUNCE);
+        });
+
+        marker.addListener('mouseout', () => {
+          marker.setAnimation(null);
+        });
+
+        markersRef.current.push(marker);
+      }, index * 100); // Stagger animation
     });
 
-    console.log('[MapScreen] Added', markersRef.current.length, 'markers');
+    console.log('[MapScreen] Added', markersRef.current.length, 'markers with animations');
+
+    // Cleanup interval on unmount
+    return () => {
+      clearInterval(pulseInterval);
+    };
   }, [googleMap, activeCategory]);
 
   // Get user location

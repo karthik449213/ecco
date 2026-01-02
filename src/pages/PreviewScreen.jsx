@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logEcoAction } from '../lib/ecoActions';
 import { mockAuth } from '../lib/mockAuth';
+import { LocationIndicator } from '../components/LocationIndicator';
 import { PrimaryButton } from '../components/PrimaryButton';
 
 export const PreviewScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { photoUrl, photoFile } = location.state || {};
+  const { photoUrl, photoFile, location: capturedLocation } = location.state || {};
   const [uploading, setUploading] = useState(false);
 
   const handleConfirm = async () => {
@@ -19,6 +20,7 @@ export const PreviewScreen = () => {
     setUploading(true);
     try {
       console.log('[PreviewScreen] Simulating upload...');
+      console.log('[PreviewScreen] With location:', capturedLocation);
       
       // Simulate network delay
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -27,7 +29,7 @@ export const PreviewScreen = () => {
       const newStreak = mockAuth.incrementStreak();
       console.log('[PreviewScreen] Upload successful, new streak:', newStreak);
       
-      navigate('/success', { state: { streak: newStreak } });
+      navigate('/success', { state: { streak: newStreak, location: capturedLocation } });
     } catch (err) {
       console.error('[PreviewScreen] Upload failed:', err);
       alert(err?.message || 'Failed to upload. Please try again.');
@@ -62,9 +64,20 @@ export const PreviewScreen = () => {
         <h2 className="text-2xl font-bold text-primary-800 mb-2">
           Looking good!
         </h2>
-        <p className="text-gray-600 mb-6">
+        <p className="text-gray-600 mb-4">
           Confirm your eco action or retake the photo.
         </p>
+
+        {/* Location Display */}
+        {capturedLocation && (
+          <div className="mb-6">
+            <LocationIndicator 
+              location={capturedLocation}
+              isLocked={true}
+              permission="granted"
+            />
+          </div>
+        )}
 
         <div className="space-y-3">
           <PrimaryButton

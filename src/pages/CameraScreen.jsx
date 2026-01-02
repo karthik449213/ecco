@@ -1,6 +1,8 @@
 import { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { mockAuth } from '../lib/mockAuth';
+import { useRealTimeLocation } from '../lib/useRealTimeLocation';
+import { LocationIndicator } from '../components/LocationIndicator';
 
 export const CameraScreen = () => {
   const navigate = useNavigate();
@@ -8,6 +10,7 @@ export const CameraScreen = () => {
   const [hasPermission, setHasPermission] = useState(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [stream, setStream] = useState(null);
+  const { location, isLocating, permission, error, startLocating, stopLocating, lockLocation, isLocked } = useRealTimeLocation();
 
   useEffect(() => {
     const ensureSession = async () => {
@@ -22,6 +25,12 @@ export const CameraScreen = () => {
     };
     ensureSession();
   }, [navigate]);
+
+  // Start location tracking when component mounts
+  useEffect(() => {
+    startLocating();
+    return () => stopLocating();
+  }, [startLocating, stopLocating]);
 
   useEffect(() => {
     const startCamera = async () => {
@@ -81,6 +90,10 @@ export const CameraScreen = () => {
       setIsCapturing(true);
       console.log('[CameraScreen] Capturing photo...');
 
+      // Lock location when capturing
+      const capturedLocation = lockLocation();
+      console.log('[CameraScreen] Location locked:', capturedLocation);
+
       const canvas = document.createElement('canvas');
       canvas.width = videoRef.current.videoWidth;
       canvas.height = videoRef.current.videoHeight;
@@ -105,7 +118,13 @@ export const CameraScreen = () => {
         const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
         const photoUrl = URL.createObjectURL(blob);
         console.log('[CameraScreen] Photo captured successfully, navigating to preview');
-        navigate('/preview', { state: { photoUrl, photoFile: file } });
+        navigate('/preview', { 
+          state: { 
+            photoUrl, 
+            photoFile: file,
+            location: capturedLocation 
+          } 
+        });
       }, 'image/jpeg', 0.8);
     } catch (error) {
       console.error('[CameraScreen] Capture error:', error);
@@ -158,6 +177,17 @@ export const CameraScreen = () => {
         <p className="text-gray-200 text-sm text-center mt-1">
           Keep it steady and clear
         </p>
+      </div>
+
+      {/* Location Indicator */}
+      <div className="absolute top-24 left-4 right-4 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 sm:w-96 z-50">
+        <LocationIndicator 
+          isLocating={isLocating}
+          location={location}
+          permission={permission}
+          error={error}
+          isLocked={isLocked}
+        />
       </div>
 
       {/* Capture Button */}
