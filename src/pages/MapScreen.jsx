@@ -211,25 +211,57 @@ export const MapScreen = () => {
         return;
       }
 
+      // Try high accuracy first
+      console.log('[MapScreen] Attempting high-accuracy geolocation...');
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const newLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
-          console.log('[MapScreen] Location obtained:', newLocation);
+          console.log('[MapScreen] High-accuracy location obtained:', newLocation);
           setUserLocation(newLocation);
           setLocationPermission('granted');
           setIsLoadingLocation(false);
         },
         (error) => {
-          console.error('[MapScreen] Geolocation error:', error);
+          console.warn('[MapScreen] High-accuracy geolocation failed:', error.message);
           
+          // If permission denied, don't retry
           if (error.code === error.PERMISSION_DENIED) {
+            console.error('[MapScreen] Location permission denied');
             setLocationPermission('denied');
+            setIsLoadingLocation(false);
+            return;
           }
-          setIsLoadingLocation(false);
+          
+          // If timeout or position unavailable, retry with lower accuracy
+          if (error.code === error.TIMEOUT || error.code === error.POSITION_UNAVAILABLE) {
+            console.log('[MapScreen] Retrying with network-based location...');
+            
+            navigator.geolocation.getCurrentPosition(
+              (position) => {
+                const newLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
+                console.log('[MapScreen] Network-based location obtained:', newLocation);
+                setUserLocation(newLocation);
+                setLocationPermission('granted');
+                setIsLoadingLocation(false);
+              },
+              (fallbackError) => {
+                console.error('[MapScreen] Fallback geolocation also failed:', fallbackError);
+                setLocationPermission('denied');
+                setIsLoadingLocation(false);
+              },
+              {
+                enableHighAccuracy: false, // Use network-based location (faster)
+                timeout: 10000,
+                maximumAge: 300000, // Accept cached location up to 5 minutes old
+              }
+            );
+          } else {
+            setIsLoadingLocation(false);
+          }
         },
         {
           enableHighAccuracy: true,
-          timeout: 10000,
+          timeout: 30000, // Increased to 30 seconds for GPS
           maximumAge: 0,
         }
       );

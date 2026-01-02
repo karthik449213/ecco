@@ -57,10 +57,27 @@ export const CameraScreen = () => {
         
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
-          // Ensure video element is ready
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current.play().catch(err => console.error('[CameraScreen] Play error:', err));
-          };
+          // Ensure video element is ready with proper event handling
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Video load timeout')), 10000);
+            
+            videoRef.current.onloadedmetadata = () => {
+              console.log('[CameraScreen] Video metadata loaded:', {
+                width: videoRef.current.videoWidth,
+                height: videoRef.current.videoHeight
+              });
+              clearTimeout(timeout);
+              resolve();
+            };
+            
+            videoRef.current.onerror = (err) => {
+              clearTimeout(timeout);
+              reject(err);
+            };
+          });
+          
+          await videoRef.current.play();
+          console.log('[CameraScreen] Video playing successfully');
         }
         setHasPermission(true);
       } catch (err) {
@@ -90,6 +107,43 @@ export const CameraScreen = () => {
       setIsCapturing(true);
       console.log('[CameraScreen] Capturing photo...');
 
+      // Check video readiness
+      const videoWidth = videoRef.current.videoWidth;
+      const videoHeight = videoRef.current.videoHeight;
+      const readyState = videoRef.current.readyState;
+      
+      console.log('[CameraScreen] Video state:', {
+        videoWidth,
+        videoHeight,
+        readyState,
+        paused: videoRef.current.paused
+      });
+
+      // Wait for video to be ready if needed
+      if (readyState < 2 || videoWidth === 0 || videoHeight === 0) {
+        console.log('[CameraScreen] Video not ready, waiting...');
+        
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Video ready timeout'));
+          }, 5000);
+
+          const checkReady = () => {
+            if (videoRef.current.readyState >= 2 && 
+                videoRef.current.videoWidth > 0 && 
+                videoRef.current.videoHeight > 0) {
+              clearTimeout(timeout);
+              console.log('[CameraScreen] Video now ready');
+              resolve();
+            } else {
+              setTimeout(checkReady, 100);
+            }
+          };
+          
+          checkReady();
+        });
+      }
+
       // Lock location when capturing
       const capturedLocation = lockLocation();
       console.log('[CameraScreen] Location locked:', capturedLocation);
@@ -99,9 +153,9 @@ export const CameraScreen = () => {
       canvas.height = videoRef.current.videoHeight;
       
       if (canvas.width === 0 || canvas.height === 0) {
-        console.error('[CameraScreen] Video dimensions not available');
+        console.error('[CameraScreen] Video dimensions still not available');
         setIsCapturing(false);
-        alert('Camera not ready. Please wait a moment and try again.');
+        alert('Camera not ready. Please reload the page and try again.');
         return;
       }
 
