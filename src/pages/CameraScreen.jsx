@@ -26,16 +26,38 @@ export const CameraScreen = () => {
   useEffect(() => {
     const startCamera = async () => {
       try {
-        const mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' },
-        });
+        console.log('[CameraScreen] Requesting camera access...');
+        
+        // Try with environment camera first (mobile), then fallback to any camera
+        let mediaStream;
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false,
+          });
+        } catch (envError) {
+          console.log('[CameraScreen] Environment camera failed, trying any camera...');
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false,
+          });
+        }
+        
+        console.log('[CameraScreen] Camera access granted');
         setStream(mediaStream);
+        
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
+          // Ensure video element is ready
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current.play().catch(err => console.error('[CameraScreen] Play error:', err));
+          };
         }
         setHasPermission(true);
       } catch (err) {
-        console.error('Camera error:', err);
+        console.error('[CameraScreen] Camera error:', err);
+        console.error('[CameraScreen] Error name:', err.name);
+        console.error('[CameraScreen] Error message:', err.message);
         setHasPermission(false);
       }
     };
@@ -44,27 +66,52 @@ export const CameraScreen = () => {
 
     return () => {
       if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+        console.log('[CameraScreen] Stopping camera stream');
+        stream.getTracks().forEach((track) => {
+          track.stop();
+        });
       }
     };
   }, []);
 
-  const handleCapture = () => {
+  const handleCapture = async () => {
     if (!videoRef.current || isCapturing) return;
-    setIsCapturing(true);
+    
+    try {
+      setIsCapturing(true);
+      console.log('[CameraScreen] Capturing photo...');
 
-    const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(videoRef.current, 0, 0);
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      
+      if (canvas.width === 0 || canvas.height === 0) {
+        console.error('[CameraScreen] Video dimensions not available');
+        setIsCapturing(false);
+        alert('Camera not ready. Please wait a moment and try again.');
+        return;
+      }
 
-    canvas.toBlob((blob) => {
-      const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
-      const photoUrl = URL.createObjectURL(blob);
-      navigate('/preview', { state: { photoUrl, photoFile: file } });
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(videoRef.current, 0, 0);
+
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          console.error('[CameraScreen] Failed to create blob');
+          setIsCapturing(false);
+          return;
+        }
+        
+        const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
+        const photoUrl = URL.createObjectURL(blob);
+        console.log('[CameraScreen] Photo captured successfully, navigating to preview');
+        navigate('/preview', { state: { photoUrl, photoFile: file } });
+      }, 'image/jpeg', 0.8);
+    } catch (error) {
+      console.error('[CameraScreen] Capture error:', error);
       setIsCapturing(false);
-    }, 'image/jpeg', 0.7);
+      alert('Failed to capture photo. Please try again.');
+    }
   };
 
   if (hasPermission === null) {
@@ -94,11 +141,12 @@ export const CameraScreen = () => {
   }
 
   return (
-    <div className="min-h-screen bg-black relative">
+    <div className="min-h-screen bg-black relative overflow-hidden">
       <video
         ref={videoRef}
         autoPlay
         playsInline
+        muted
         className="w-full h-screen object-cover"
       />
 

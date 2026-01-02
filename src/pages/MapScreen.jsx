@@ -31,25 +31,43 @@ export const MapScreen = () => {
 
   // Initialize map
   useEffect(() => {
+    let attempts = 0;
+    const maxAttempts = 20; // 10 seconds max wait
+    
     const initializeMap = () => {
-      if (!mapRef.current || !window.google || !window.google.maps) {
-        console.log('[MapScreen] Waiting for Google Maps API...');
-        setTimeout(initializeMap, 500);
+      if (!mapRef.current) {
+        console.log('[MapScreen] Map ref not ready');
+        return;
+      }
+      
+      if (!window.google || !window.google.maps) {
+        attempts++;
+        if (attempts < maxAttempts) {
+          console.log('[MapScreen] Waiting for Google Maps API...', attempts);
+          setTimeout(initializeMap, 500);
+        } else {
+          console.error('[MapScreen] Google Maps API failed to load');
+        }
         return;
       }
 
       console.log('[MapScreen] Initializing Google Maps...');
-      const map = new window.google.maps.Map(mapRef.current, {
-        zoom: 15,
-        center: userLocation,
-        zoomControl: true,
-        streetViewControl: false,
-        fullscreenControl: false,
-        mapTypeControl: false,
-      });
+      try {
+        const map = new window.google.maps.Map(mapRef.current, {
+          zoom: 15,
+          center: defaultCenter,
+          zoomControl: true,
+          streetViewControl: false,
+          fullscreenControl: false,
+          mapTypeControl: false,
+          mapTypeId: 'roadmap',
+        });
 
-      setGoogleMap(map);
-      console.log('[MapScreen] Google Maps initialized');
+        setGoogleMap(map);
+        console.log('[MapScreen] Google Maps initialized successfully');
+      } catch (error) {
+        console.error('[MapScreen] Error initializing map:', error);
+      }
     };
 
     initializeMap();
@@ -223,37 +241,39 @@ export const MapScreen = () => {
         ></div>
 
         {/* Category Buttons */}
-        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-3 bg-white rounded-full p-2 shadow-lg z-[500]">
-          <button
-            onClick={() => setActiveCategory('bins')}
-            className={`px-6 py-3 rounded-full font-semibold transition-all whitespace-nowrap ${
-              activeCategory === 'bins'
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            🔵 Recycling Bins
-          </button>
-          <button
-            onClick={() => setActiveCategory('gardens')}
-            className={`px-6 py-3 rounded-full font-semibold transition-all whitespace-nowrap ${
-              activeCategory === 'gardens'
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            🌳 Community Gardens
-          </button>
-          <button
-            onClick={() => setActiveCategory('donations')}
-            className={`px-6 py-3 rounded-full font-semibold transition-all whitespace-nowrap ${
-              activeCategory === 'donations'
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            📦 Donation Centers
-          </button>
+        <div className="absolute bottom-4 left-0 right-0 flex justify-center px-4 z-[500]">
+          <div className="flex flex-wrap gap-2 sm:gap-3 bg-white rounded-full p-2 shadow-lg justify-center">
+            <button
+              onClick={() => setActiveCategory('bins')}
+              className={`px-3 sm:px-6 py-2 sm:py-3 rounded-full font-semibold transition-all text-xs sm:text-base ${
+                activeCategory === 'bins'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              🔵 <span className="hidden sm:inline">Recycling Bins</span><span className="sm:hidden">Bins</span>
+            </button>
+            <button
+              onClick={() => setActiveCategory('gardens')}
+              className={`px-3 sm:px-6 py-2 sm:py-3 rounded-full font-semibold transition-all text-xs sm:text-base ${
+                activeCategory === 'gardens'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              🌳 <span className="hidden sm:inline">Community Gardens</span><span className="sm:hidden">Gardens</span>
+            </button>
+            <button
+              onClick={() => setActiveCategory('donations')}
+              className={`px-3 sm:px-6 py-2 sm:py-3 rounded-full font-semibold transition-all text-xs sm:text-base ${
+                activeCategory === 'donations'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              📦 <span className="hidden sm:inline">Donation Centers</span><span className="sm:hidden">Donations</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
